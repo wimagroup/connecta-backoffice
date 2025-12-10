@@ -34,3 +34,4 @@ public class ComunicadoResumoDTO {
     private Boolean podeCancelar;
 }
 
+

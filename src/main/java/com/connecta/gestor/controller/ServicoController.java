@@ -2,11 +2,13 @@ package com.connecta.gestor.controller;
 
 import com.connecta.gestor.dto.CreateServicoRequestDTO;
 import com.connecta.gestor.dto.ServicoDTO;
+import com.connecta.gestor.dto.ServicoFilterDTO;
 import com.connecta.gestor.dto.UpdateServicoRequestDTO;
 import com.connecta.gestor.service.ServicoService;
 import jakarta.validation.Valid;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.prepost.PreAuthorize;
@@ -16,7 +18,7 @@ import java.util.List;
 
 @RestController
 @RequestMapping("/api/servicos")
-@CrossOrigin(origins = "*")
+@CrossOrigin(origins = "http://localhost:4200")
 @Slf4j
 public class ServicoController {
     
@@ -24,6 +26,30 @@ public class ServicoController {
     private ServicoService servicoService;
     
     @GetMapping
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'GESTOR', 'ATENDENTE')")
+    public ResponseEntity<Page<ServicoDTO>> listarComFiltros(
+            @RequestParam(required = false) String busca,
+            @RequestParam(required = false) List<Long> categorias,
+            @RequestParam(required = false) List<Boolean> status,
+            @RequestParam(defaultValue = "0") Integer page,
+            @RequestParam(defaultValue = "10") Integer size,
+            @RequestParam(defaultValue = "titulo") String sort,
+            @RequestParam(defaultValue = "asc") String direction) {
+        
+        ServicoFilterDTO filtros = new ServicoFilterDTO();
+        filtros.setBusca(busca);
+        filtros.setCategorias(categorias);
+        filtros.setStatus(status);
+        filtros.setPage(page);
+        filtros.setSize(size);
+        filtros.setSort(sort);
+        filtros.setDirection(direction);
+        
+        return ResponseEntity.ok(servicoService.listarComFiltros(filtros));
+    }
+    
+    @GetMapping("/todos")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'GESTOR')")
     public ResponseEntity<List<ServicoDTO>> listarTodos() {
         return ResponseEntity.ok(servicoService.listarTodos());
     }
@@ -39,6 +65,7 @@ public class ServicoController {
     }
     
     @GetMapping("/{id}")
+    @PreAuthorize("hasAnyRole('SUPER_ADMIN', 'GESTOR', 'ATENDENTE')")
     public ResponseEntity<ServicoDTO> buscarPorId(@PathVariable Long id) {
         return ResponseEntity.ok(servicoService.buscarPorId(id));
     }
@@ -71,4 +98,3 @@ public class ServicoController {
         return ResponseEntity.ok(servicoService.toggleStatus(id));
     }
 }
-

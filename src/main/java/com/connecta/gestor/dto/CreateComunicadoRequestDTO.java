@@ -36,3 +36,4 @@ public class CreateComunicadoRequestDTO {
     private Boolean salvarRascunho;
 }
 
+

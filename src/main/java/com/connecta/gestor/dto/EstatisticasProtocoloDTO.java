@@ -23,3 +23,4 @@ public class EstatisticasProtocoloDTO {
     private Map<String, Long> porStatus;
 }
 
+

@@ -40,3 +40,4 @@ public class ComunicadoDetalheDTO {
     private Boolean podeCancelar;
 }
 
+

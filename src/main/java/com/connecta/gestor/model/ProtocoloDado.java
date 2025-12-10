@@ -38,3 +38,4 @@ public class ProtocoloDado {
     private LocalDateTime createdAt;
 }
 
+

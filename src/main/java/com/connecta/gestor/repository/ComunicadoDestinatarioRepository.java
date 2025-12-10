@@ -15,3 +15,4 @@ public interface ComunicadoDestinatarioRepository extends JpaRepository<Comunica
     Long countByComunicadoAndErroTrue(Comunicado comunicado);
 }
 
+

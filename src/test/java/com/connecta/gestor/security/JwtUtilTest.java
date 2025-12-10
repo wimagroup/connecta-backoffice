@@ -22,7 +22,8 @@ class JwtUtilTest {
     void setUp() {
         jwtUtil = new JwtUtil();
         ReflectionTestUtils.setField(jwtUtil, "secret", "TestSecretKeyForJWTTokenGenerationAndValidation123456789012345678901234567890");
-        ReflectionTestUtils.setField(jwtUtil, "expiration", 86400000L);
+        ReflectionTestUtils.setField(jwtUtil, "accessTokenExpiration", 900000L);
+        ReflectionTestUtils.setField(jwtUtil, "refreshTokenExpiration", 2592000000L);
         
         Role role = new Role();
         role.setNome(RoleType.ROLE_SUPER_ADMIN);
@@ -35,18 +36,27 @@ class JwtUtilTest {
     }
     
     @Test
-    @DisplayName("Deve gerar token JWT com sucesso")
-    void shouldGenerateTokenSuccessfully() {
-        String token = jwtUtil.generateToken(testUser);
+    @DisplayName("Deve gerar access token JWT com sucesso")
+    void shouldGenerateAccessTokenSuccessfully() {
+        String token = jwtUtil.generateAccessToken(testUser);
         
         assertThat(token).isNotNull();
         assertThat(token).isNotEmpty();
     }
     
     @Test
-    @DisplayName("Deve extrair username do token")
+    @DisplayName("Deve gerar refresh token com sucesso")
+    void shouldGenerateRefreshTokenSuccessfully() {
+        String refreshToken = jwtUtil.generateRefreshToken();
+        
+        assertThat(refreshToken).isNotNull();
+        assertThat(refreshToken).isNotEmpty();
+    }
+    
+    @Test
+    @DisplayName("Deve extrair username do access token")
     void shouldExtractUsernameFromToken() {
-        String token = jwtUtil.generateToken(testUser);
+        String token = jwtUtil.generateAccessToken(testUser);
         
         String username = jwtUtil.getUsernameFromToken(token);
         
@@ -56,7 +66,7 @@ class JwtUtilTest {
     @Test
     @DisplayName("Deve extrair data de expiração do token")
     void shouldExtractExpirationDateFromToken() {
-        String token = jwtUtil.generateToken(testUser);
+        String token = jwtUtil.generateAccessToken(testUser);
         
         Date expirationDate = jwtUtil.getExpirationDateFromToken(token);
         
@@ -65,9 +75,9 @@ class JwtUtilTest {
     }
     
     @Test
-    @DisplayName("Deve validar token corretamente")
+    @DisplayName("Deve validar access token corretamente")
     void shouldValidateTokenCorrectly() {
-        String token = jwtUtil.generateToken(testUser);
+        String token = jwtUtil.generateAccessToken(testUser);
         
         Boolean isValid = jwtUtil.validateToken(token, testUser);
         
@@ -77,7 +87,7 @@ class JwtUtilTest {
     @Test
     @DisplayName("Deve retornar false para token com username diferente")
     void shouldReturnFalseForTokenWithDifferentUsername() {
-        String token = jwtUtil.generateToken(testUser);
+        String token = jwtUtil.generateAccessToken(testUser);
         
         User differentUser = new User();
         differentUser.setEmail("different@email.com");

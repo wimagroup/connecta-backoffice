@@ -48,3 +48,4 @@ public class ProtocoloHistorico {
     private LocalDateTime createdAt;
 }
 
+

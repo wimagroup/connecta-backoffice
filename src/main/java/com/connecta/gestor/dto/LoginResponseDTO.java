@@ -1,24 +1,22 @@
 package com.connecta.gestor.dto;
 
 import lombok.AllArgsConstructor;
+import lombok.Builder;
 import lombok.Data;
+import lombok.NoArgsConstructor;
 
 @Data
+@NoArgsConstructor
 @AllArgsConstructor
+@Builder
 public class LoginResponseDTO {
     
-    private String token;
+    private String accessToken;
+    private String refreshToken;
     private String tipo = "Bearer";
+    private Long expiresIn;
     private String email;
     private String nome;
     private String role;
-    
-    public LoginResponseDTO(String token, String email, String nome, String role) {
-        this.token = token;
-        this.tipo = "Bearer";
-        this.email = email;
-        this.nome = nome;
-        this.role = role;
-    }
 }
 

@@ -12,3 +12,4 @@ public interface ProtocoloHistoricoRepository extends JpaRepository<ProtocoloHis
     List<ProtocoloHistorico> findByProtocoloOrderByCreatedAtAsc(Protocolo protocolo);
 }
 
+

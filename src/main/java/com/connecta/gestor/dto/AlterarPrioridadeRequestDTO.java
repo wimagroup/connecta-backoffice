@@ -11,3 +11,4 @@ public class AlterarPrioridadeRequestDTO {
     private PrioridadeProtocolo prioridade;
 }
 
+

@@ -23,6 +23,19 @@ public class AuthController {
         return ResponseEntity.ok(response);
     }
     
+    @PostMapping("/refresh")
+    public ResponseEntity<LoginResponseDTO> refresh(@Valid @RequestBody RefreshTokenRequestDTO request) {
+        LoginResponseDTO response = authService.refreshToken(request);
+        return ResponseEntity.ok(response);
+    }
+    
+    @PostMapping("/logout")
+    @PreAuthorize("isAuthenticated()")
+    public ResponseEntity<String> logout(@Valid @RequestBody RefreshTokenRequestDTO request) {
+        authService.logout(request.getRefreshToken());
+        return ResponseEntity.ok("Logout realizado com sucesso!");
+    }
+    
     @PostMapping("/recovery-password")
     public ResponseEntity<String> recoveryPassword(
             @Valid @RequestBody RecoveryPasswordRequestDTO request) {

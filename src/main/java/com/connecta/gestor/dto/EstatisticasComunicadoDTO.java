@@ -25,3 +25,4 @@ public class EstatisticasComunicadoDTO {
     private Map<String, Long> porCanal;
 }
 
+

@@ -13,3 +13,4 @@ public interface ProtocoloDadoRepository extends JpaRepository<ProtocoloDado, Lo
     void deleteByProtocolo(Protocolo protocolo);
 }
 
+

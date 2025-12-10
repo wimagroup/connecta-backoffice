@@ -13,3 +13,4 @@ public interface ProtocoloComentarioRepository extends JpaRepository<ProtocoloCo
     List<ProtocoloComentario> findByProtocoloAndInternoFalseOrderByCreatedAtAsc(Protocolo protocolo);
 }
 
+

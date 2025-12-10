@@ -16,11 +16,15 @@ public class ServicoDTO {
     private Long id;
     private Long categoriaId;
     private String categoriaNome;
+    private String categoriaIcone;
+    private String categoriaCor;
     private String titulo;
     private String descricao;
     private Integer prazoAtendimentoDias;
     private Boolean ativo;
     private List<ServicoCampoDTO> campos;
     private LocalDateTime createdAt;
+    private LocalDateTime updatedAt;
 }
+
 

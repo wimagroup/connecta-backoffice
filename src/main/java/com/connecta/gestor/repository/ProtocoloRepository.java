@@ -39,3 +39,4 @@ public interface ProtocoloRepository extends JpaRepository<Protocolo, Long> {
     Long findMaxIdByAno(@Param("ano") int ano);
 }
 
+

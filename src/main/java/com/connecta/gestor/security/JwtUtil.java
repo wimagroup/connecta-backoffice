@@ -12,6 +12,7 @@ import java.security.Key;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Map;
+import java.util.UUID;
 import java.util.function.Function;
 
 @Component
@@ -20,8 +21,11 @@ public class JwtUtil {
     @Value("${jwt.secret}")
     private String secret;
     
-    @Value("${jwt.expiration}")
-    private Long expiration;
+    @Value("${jwt.access-token.expiration}")
+    private Long accessTokenExpiration;
+    
+    @Value("${jwt.refresh-token.expiration}")
+    private Long refreshTokenExpiration;
     
     private Key getSigningKey() {
         return Keys.hmacShaKeyFor(secret.getBytes());
@@ -53,18 +57,31 @@ public class JwtUtil {
         return expiration.before(new Date());
     }
     
-    public String generateToken(UserDetails userDetails) {
+    public String generateAccessToken(UserDetails userDetails) {
         Map<String, Object> claims = new HashMap<>();
         
         claims.put("role", userDetails.getAuthorities().stream()
                 .findFirst()
                 .map(auth -> auth.getAuthority())
                 .orElse(""));
+        claims.put("type", "access");
         
-        return doGenerateToken(claims, userDetails.getUsername());
+        return doGenerateToken(claims, userDetails.getUsername(), accessTokenExpiration);
     }
     
-    private String doGenerateToken(Map<String, Object> claims, String subject) {
+    public String generateRefreshToken() {
+        return UUID.randomUUID().toString();
+    }
+    
+    public Long getAccessTokenExpiration() {
+        return accessTokenExpiration;
+    }
+    
+    public Long getRefreshTokenExpiration() {
+        return refreshTokenExpiration;
+    }
+    
+    private String doGenerateToken(Map<String, Object> claims, String subject, Long expiration) {
         final Date createdDate = new Date();
         final Date expirationDate = new Date(createdDate.getTime() + expiration);
         

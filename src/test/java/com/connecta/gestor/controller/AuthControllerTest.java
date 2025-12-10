@@ -44,12 +44,15 @@ class AuthControllerTest {
         request.setEmail("test@email.com");
         request.setSenha("password123");
         
-        LoginResponseDTO response = new LoginResponseDTO(
-                "jwt-token",
-                "test@email.com",
-                "Test User",
-                "ROLE_SUPER_ADMIN"
-        );
+        LoginResponseDTO response = LoginResponseDTO.builder()
+                .accessToken("jwt-access-token")
+                .refreshToken("jwt-refresh-token")
+                .tipo("Bearer")
+                .expiresIn(900L)
+                .email("test@email.com")
+                .nome("Test User")
+                .role("ROLE_SUPER_ADMIN")
+                .build();
         
         when(authService.login(any(LoginRequestDTO.class))).thenReturn(response);
         
@@ -58,10 +61,12 @@ class AuthControllerTest {
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(objectMapper.writeValueAsString(request)))
                 .andExpect(status().isOk())
-                .andExpect(jsonPath("$.token").value("jwt-token"))
+                .andExpect(jsonPath("$.accessToken").value("jwt-access-token"))
+                .andExpect(jsonPath("$.refreshToken").value("jwt-refresh-token"))
                 .andExpect(jsonPath("$.email").value("test@email.com"))
                 .andExpect(jsonPath("$.nome").value("Test User"))
-                .andExpect(jsonPath("$.role").value("ROLE_SUPER_ADMIN"));
+                .andExpect(jsonPath("$.role").value("ROLE_SUPER_ADMIN"))
+                .andExpect(jsonPath("$.expiresIn").value(900));
         
         verify(authService).login(any(LoginRequestDTO.class));
     }

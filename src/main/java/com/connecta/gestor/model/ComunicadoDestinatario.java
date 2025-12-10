@@ -54,3 +54,4 @@ public class ComunicadoDestinatario {
     private LocalDateTime createdAt;
 }
 
+

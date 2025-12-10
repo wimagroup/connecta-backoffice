@@ -4,8 +4,10 @@ import com.connecta.gestor.dto.*;
 import com.connecta.gestor.exception.EmailAlreadyExistsException;
 import com.connecta.gestor.exception.InvalidTokenException;
 import com.connecta.gestor.exception.ResourceNotFoundException;
+import com.connecta.gestor.model.RefreshToken;
 import com.connecta.gestor.model.Role;
 import com.connecta.gestor.model.User;
+import com.connecta.gestor.repository.RefreshTokenRepository;
 import com.connecta.gestor.repository.RoleRepository;
 import com.connecta.gestor.repository.UserRepository;
 import com.connecta.gestor.security.JwtUtil;
@@ -35,6 +37,9 @@ public class AuthService {
     private RoleRepository roleRepository;
     
     @Autowired
+    private RefreshTokenRepository refreshTokenRepository;
+    
+    @Autowired
     private PasswordEncoder passwordEncoder;
     
     @Autowired
@@ -46,7 +51,7 @@ public class AuthService {
     @Autowired
     private EmailService emailService;
     
-    @Transactional(readOnly = true)
+    @Transactional
     public LoginResponseDTO login(LoginRequestDTO request) {
         try {
             logger.info("Tentativa de login para o email: {}", request.getEmail());
@@ -65,21 +70,89 @@ public class AuthService {
                 throw new BadCredentialsException("Usuário inativo");
             }
             
-            String token = jwtUtil.generateToken(user);
+            String accessToken = jwtUtil.generateAccessToken(user);
+            String refreshTokenString = jwtUtil.generateRefreshToken();
+            
+            RefreshToken refreshToken = RefreshToken.builder()
+                    .token(refreshTokenString)
+                    .user(user)
+                    .expiryDate(LocalDateTime.now().plusNanos(jwtUtil.getRefreshTokenExpiration() * 1_000_000))
+                    .revoked(false)
+                    .build();
+            
+            refreshTokenRepository.save(refreshToken);
             
             logger.info("Login realizado com sucesso para: {}", request.getEmail());
             
-            return new LoginResponseDTO(
-                    token,
-                    user.getEmail(),
-                    user.getNome(),
-                    user.getRole().getNome().name()
-            );
+            return LoginResponseDTO.builder()
+                    .accessToken(accessToken)
+                    .refreshToken(refreshTokenString)
+                    .tipo("Bearer")
+                    .expiresIn(jwtUtil.getAccessTokenExpiration() / 1000)
+                    .email(user.getEmail())
+                    .nome(user.getNome())
+                    .role(user.getRole().getNome().name())
+                    .build();
             
         } catch (BadCredentialsException e) {
             logger.error("Falha no login para: {}", request.getEmail());
             throw new BadCredentialsException("Email ou senha inválidos");
         }
+    }
+    
+    @Transactional
+    public LoginResponseDTO refreshToken(RefreshTokenRequestDTO request) {
+        logger.info("Tentativa de refresh token");
+        
+        RefreshToken refreshToken = refreshTokenRepository.findByToken(request.getRefreshToken())
+                .orElseThrow(() -> new InvalidTokenException("Refresh token inválido"));
+        
+        if (refreshToken.getRevoked()) {
+            throw new InvalidTokenException("Refresh token foi revogado");
+        }
+        
+        if (refreshToken.isExpired()) {
+            refreshTokenRepository.delete(refreshToken);
+            throw new InvalidTokenException("Refresh token expirado");
+        }
+        
+        User user = refreshToken.getUser();
+        
+        if (!user.getAtivo()) {
+            throw new BadCredentialsException("Usuário inativo");
+        }
+        
+        String newAccessToken = jwtUtil.generateAccessToken(user);
+        String newRefreshTokenString = jwtUtil.generateRefreshToken();
+        
+        refreshToken.setToken(newRefreshTokenString);
+        refreshToken.setExpiryDate(LocalDateTime.now().plusNanos(jwtUtil.getRefreshTokenExpiration() * 1_000_000));
+        refreshTokenRepository.save(refreshToken);
+        
+        logger.info("Refresh token realizado com sucesso para: {}", user.getEmail());
+        
+        return LoginResponseDTO.builder()
+                .accessToken(newAccessToken)
+                .refreshToken(newRefreshTokenString)
+                .tipo("Bearer")
+                .expiresIn(jwtUtil.getAccessTokenExpiration() / 1000)
+                .email(user.getEmail())
+                .nome(user.getNome())
+                .role(user.getRole().getNome().name())
+                .build();
+    }
+    
+    @Transactional
+    public void logout(String refreshTokenString) {
+        logger.info("Tentativa de logout");
+        
+        RefreshToken refreshToken = refreshTokenRepository.findByToken(refreshTokenString)
+                .orElseThrow(() -> new InvalidTokenException("Refresh token inválido"));
+        
+        refreshToken.setRevoked(true);
+        refreshTokenRepository.save(refreshToken);
+        
+        logger.info("Logout realizado com sucesso para usuário ID: {}", refreshToken.getUser().getId());
     }
     
     @Transactional

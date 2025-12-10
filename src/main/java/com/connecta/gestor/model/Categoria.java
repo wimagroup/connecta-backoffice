@@ -45,3 +45,4 @@ public class Categoria {
     private LocalDateTime updatedAt;
 }
 
+

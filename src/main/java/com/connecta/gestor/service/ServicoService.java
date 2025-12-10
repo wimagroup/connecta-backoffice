@@ -10,6 +10,10 @@ import com.connecta.gestor.repository.ServicoCampoRepository;
 import com.connecta.gestor.repository.ServicoRepository;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -28,6 +32,23 @@ public class ServicoService {
     
     @Autowired
     private ServicoCampoRepository servicoCampoRepository;
+    
+    public Page<ServicoDTO> listarComFiltros(ServicoFilterDTO filtros) {
+        Sort sort = filtros.getDirection().equalsIgnoreCase("desc") 
+            ? Sort.by(filtros.getSort()).descending() 
+            : Sort.by(filtros.getSort()).ascending();
+        
+        Pageable pageable = PageRequest.of(filtros.getPage(), filtros.getSize(), sort);
+        
+        Page<Servico> servicosPage = servicoRepository.findWithFilters(
+            filtros.getBusca(),
+            (filtros.getCategorias() != null && !filtros.getCategorias().isEmpty()) ? filtros.getCategorias() : null,
+            (filtros.getStatus() != null && !filtros.getStatus().isEmpty()) ? filtros.getStatus() : null,
+            pageable
+        );
+        
+        return servicosPage.map(this::toDTO);
+    }
     
     public List<ServicoDTO> listarTodos() {
         return servicoRepository.findAll()
@@ -177,13 +198,17 @@ public class ServicoService {
                 .id(servico.getId())
                 .categoriaId(servico.getCategoria().getId())
                 .categoriaNome(servico.getCategoria().getNome())
+                .categoriaIcone(servico.getCategoria().getIcone())
+                .categoriaCor(servico.getCategoria().getCor())
                 .titulo(servico.getTitulo())
                 .descricao(servico.getDescricao())
                 .prazoAtendimentoDias(servico.getPrazoAtendimentoDias())
                 .ativo(servico.getAtivo())
                 .campos(camposDTO)
                 .createdAt(servico.getCreatedAt())
+                .updatedAt(servico.getUpdatedAt())
                 .build();
     }
 }
+
 

@@ -42,6 +42,9 @@ class AuthServiceTest {
     private RoleRepository roleRepository;
     
     @Mock
+    private com.connecta.gestor.repository.RefreshTokenRepository refreshTokenRepository;
+    
+    @Mock
     private PasswordEncoder passwordEncoder;
     
     @Mock
@@ -85,19 +88,27 @@ class AuthServiceTest {
         Authentication auth = mock(Authentication.class);
         when(authenticationManager.authenticate(any())).thenReturn(auth);
         when(userRepository.findByEmail(anyString())).thenReturn(Optional.of(testUser));
-        when(jwtUtil.generateToken(any())).thenReturn("jwt-token");
+        when(jwtUtil.generateAccessToken(any())).thenReturn("jwt-access-token");
+        when(jwtUtil.generateRefreshToken()).thenReturn("jwt-refresh-token");
+        when(jwtUtil.getAccessTokenExpiration()).thenReturn(900000L);
+        when(jwtUtil.getRefreshTokenExpiration()).thenReturn(2592000000L);
+        when(refreshTokenRepository.save(any())).thenReturn(null);
         
         LoginResponseDTO response = authService.login(request);
         
         assertThat(response).isNotNull();
-        assertThat(response.getToken()).isEqualTo("jwt-token");
+        assertThat(response.getAccessToken()).isEqualTo("jwt-access-token");
+        assertThat(response.getRefreshToken()).isEqualTo("jwt-refresh-token");
         assertThat(response.getEmail()).isEqualTo("test@email.com");
         assertThat(response.getNome()).isEqualTo("Test User");
         assertThat(response.getRole()).isEqualTo("ROLE_SUPER_ADMIN");
+        assertThat(response.getExpiresIn()).isEqualTo(900L);
         
         verify(authenticationManager).authenticate(any(UsernamePasswordAuthenticationToken.class));
         verify(userRepository).findByEmail("test@email.com");
-        verify(jwtUtil).generateToken(testUser);
+        verify(jwtUtil).generateAccessToken(testUser);
+        verify(jwtUtil).generateRefreshToken();
+        verify(refreshTokenRepository).save(any());
     }
     
     @Test

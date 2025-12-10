@@ -10,3 +10,4 @@ public class FinalizarProtocoloRequestDTO {
     private String respostaFinal;
 }
 
+
