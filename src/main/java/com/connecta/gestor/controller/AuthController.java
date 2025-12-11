@@ -31,9 +31,9 @@ public class AuthController {
     
     @PostMapping("/logout")
     @PreAuthorize("isAuthenticated()")
-    public ResponseEntity<String> logout(@Valid @RequestBody RefreshTokenRequestDTO request) {
+    public ResponseEntity<MessageResponseDTO> logout(@Valid @RequestBody RefreshTokenRequestDTO request) {
         authService.logout(request.getRefreshToken());
-        return ResponseEntity.ok("Logout realizado com sucesso!");
+        return ResponseEntity.ok(MessageResponseDTO.of("Logout realizado com sucesso"));
     }
     
     @PostMapping("/recovery-password")

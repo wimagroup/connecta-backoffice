@@ -34,3 +34,4 @@ public interface ComunicadoRepository extends JpaRepository<Comunicado, Long> {
 }
 
 
+

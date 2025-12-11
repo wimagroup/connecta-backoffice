@@ -34,6 +34,9 @@ public class RefreshToken {
     @Column(nullable = false)
     private Boolean revoked = false;
     
+    @Column(name = "revoked_at")
+    private LocalDateTime revokedAt;
+    
     @CreationTimestamp
     @Column(nullable = false, updatable = false)
     private LocalDateTime createdAt;
@@ -41,5 +44,10 @@ public class RefreshToken {
     public boolean isExpired() {
         return LocalDateTime.now().isAfter(expiryDate);
     }
+    
+    public boolean isValid() {
+        return !revoked && !isExpired();
+    }
 }
+
 

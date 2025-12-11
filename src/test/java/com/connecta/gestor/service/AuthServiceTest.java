@@ -56,6 +56,12 @@ class AuthServiceTest {
     @Mock
     private EmailService emailService;
     
+    @Mock
+    private PasswordRecoveryTokenService tokenService;
+    
+    @Mock
+    private com.connecta.gestor.validator.PasswordValidator passwordValidator;
+    
     @InjectMocks
     private AuthService authService;
     
@@ -76,6 +82,10 @@ class AuthServiceTest {
         testUser.setNome("Test User");
         testUser.setRole(testRole);
         testUser.setAtivo(true);
+        
+        org.springframework.test.util.ReflectionTestUtils.setField(
+            authService, "tokenExpirationHours", 1
+        );
     }
     
     @Test
@@ -97,11 +107,13 @@ class AuthServiceTest {
         LoginResponseDTO response = authService.login(request);
         
         assertThat(response).isNotNull();
-        assertThat(response.getAccessToken()).isEqualTo("jwt-access-token");
-        assertThat(response.getRefreshToken()).isEqualTo("jwt-refresh-token");
+        assertThat(response.getId()).isEqualTo(1L);
         assertThat(response.getEmail()).isEqualTo("test@email.com");
         assertThat(response.getNome()).isEqualTo("Test User");
         assertThat(response.getRole()).isEqualTo("ROLE_SUPER_ADMIN");
+        assertThat(response.getAccessToken()).isEqualTo("jwt-access-token");
+        assertThat(response.getRefreshToken()).isEqualTo("jwt-refresh-token");
+        assertThat(response.getTipo()).isEqualTo("Bearer");
         assertThat(response.getExpiresIn()).isEqualTo(900L);
         
         verify(authenticationManager).authenticate(any(UsernamePasswordAuthenticationToken.class));
@@ -150,28 +162,32 @@ class AuthServiceTest {
         request.setEmail("test@email.com");
         
         when(userRepository.findByEmail(anyString())).thenReturn(Optional.of(testUser));
+        when(tokenService.generateSecureToken()).thenReturn("secure-token-123");
         when(userRepository.save(any())).thenReturn(testUser);
-        doNothing().when(emailService).sendRecoveryPasswordEmail(anyString(), anyString());
+        doNothing().when(emailService).sendRecoveryPasswordEmail(anyString(), anyString(), anyString());
         
         assertThatCode(() -> authService.recoveryPassword(request))
                 .doesNotThrowAnyException();
         
         verify(userRepository).findByEmail("test@email.com");
+        verify(tokenService).generateSecureToken();
         verify(userRepository).save(any(User.class));
-        verify(emailService).sendRecoveryPasswordEmail(anyString(), anyString());
+        verify(emailService).sendRecoveryPasswordEmail(anyString(), anyString(), anyString());
     }
     
     @Test
-    @DisplayName("Deve lançar exceção ao solicitar recuperação para email inexistente")
-    void shouldThrowExceptionWhenRecoverPasswordWithNonExistentEmail() {
+    @DisplayName("Não deve lançar exceção ao solicitar recuperação para email inexistente (segurança OWASP)")
+    void shouldNotThrowExceptionWhenRecoverPasswordWithNonExistentEmail() {
         RecoveryPasswordRequestDTO request = new RecoveryPasswordRequestDTO();
         request.setEmail("nonexistent@email.com");
         
         when(userRepository.findByEmail(anyString())).thenReturn(Optional.empty());
         
-        assertThatThrownBy(() -> authService.recoveryPassword(request))
-                .isInstanceOf(ResourceNotFoundException.class)
-                .hasMessage("Usuário não encontrado com o email informado");
+        assertThatCode(() -> authService.recoveryPassword(request))
+                .doesNotThrowAnyException();
+        
+        verify(userRepository).findByEmail("nonexistent@email.com");
+        verify(emailService, never()).sendRecoveryPasswordEmail(anyString(), anyString(), anyString());
     }
     
     @Test
@@ -179,22 +195,31 @@ class AuthServiceTest {
     void shouldResetPasswordWithValidToken() {
         ResetPasswordRequestDTO request = new ResetPasswordRequestDTO();
         request.setToken("valid-token");
-        request.setNovaSenha("newPassword123");
+        request.setNovaSenha("NewP@ssw0rd123");
         
         testUser.setTokenRecuperacao("valid-token");
         testUser.setTokenRecuperacaoExpiracao(LocalDateTime.now().plusHours(1));
         
+        com.connecta.gestor.validator.PasswordValidator.ValidationResult validationResult = 
+            new com.connecta.gestor.validator.PasswordValidator.ValidationResult(true, java.util.Collections.emptyList());
+        
+        when(tokenService.validateTokenFormat(anyString())).thenReturn(true);
         when(userRepository.findByTokenRecuperacao(anyString())).thenReturn(Optional.of(testUser));
+        when(passwordValidator.validate(anyString())).thenReturn(validationResult);
         when(passwordEncoder.encode(anyString())).thenReturn("encodedNewPassword");
         when(userRepository.save(any())).thenReturn(testUser);
+        when(refreshTokenRepository.findByUser(any())).thenReturn(java.util.Collections.emptyList());
         doNothing().when(emailService).sendPasswordChangedEmail(anyString(), anyString());
         
         assertThatCode(() -> authService.resetPassword(request))
                 .doesNotThrowAnyException();
         
+        verify(tokenService).validateTokenFormat("valid-token");
         verify(userRepository).findByTokenRecuperacao("valid-token");
-        verify(passwordEncoder).encode("newPassword123");
+        verify(passwordValidator).validate("NewP@ssw0rd123");
+        verify(passwordEncoder).encode("NewP@ssw0rd123");
         verify(userRepository).save(testUser);
+        verify(refreshTokenRepository).findByUser(testUser);
         verify(emailService).sendPasswordChangedEmail(anyString(), anyString());
     }
     
@@ -203,13 +228,14 @@ class AuthServiceTest {
     void shouldThrowExceptionWhenResetPasswordWithInvalidToken() {
         ResetPasswordRequestDTO request = new ResetPasswordRequestDTO();
         request.setToken("invalid-token");
-        request.setNovaSenha("newPassword123");
+        request.setNovaSenha("NewP@ssw0rd123");
         
+        when(tokenService.validateTokenFormat(anyString())).thenReturn(true);
         when(userRepository.findByTokenRecuperacao(anyString())).thenReturn(Optional.empty());
         
         assertThatThrownBy(() -> authService.resetPassword(request))
                 .isInstanceOf(InvalidTokenException.class)
-                .hasMessage("Token inválido");
+                .hasMessageContaining("Token inválido ou já utilizado");
     }
     
     @Test
@@ -217,16 +243,18 @@ class AuthServiceTest {
     void shouldThrowExceptionWhenResetPasswordWithExpiredToken() {
         ResetPasswordRequestDTO request = new ResetPasswordRequestDTO();
         request.setToken("expired-token");
-        request.setNovaSenha("newPassword123");
+        request.setNovaSenha("NewP@ssw0rd123");
         
         testUser.setTokenRecuperacao("expired-token");
         testUser.setTokenRecuperacaoExpiracao(LocalDateTime.now().minusHours(1));
         
+        when(tokenService.validateTokenFormat(anyString())).thenReturn(true);
         when(userRepository.findByTokenRecuperacao(anyString())).thenReturn(Optional.of(testUser));
+        when(userRepository.save(any(User.class))).thenReturn(testUser);
         
         assertThatThrownBy(() -> authService.resetPassword(request))
                 .isInstanceOf(InvalidTokenException.class)
-                .hasMessage("Token expirado");
+                .hasMessageContaining("Token expirado");
     }
     
     @Test
@@ -334,6 +362,116 @@ class AuthServiceTest {
         assertThatThrownBy(() -> authService.toggleUserStatus(999L))
                 .isInstanceOf(ResourceNotFoundException.class)
                 .hasMessage("Usuário não encontrado");
+    }
+    
+    @Test
+    @DisplayName("Deve realizar logout com sucesso")
+    void shouldLogoutSuccessfully() {
+        String refreshTokenString = "valid-refresh-token";
+        com.connecta.gestor.model.RefreshToken refreshToken = com.connecta.gestor.model.RefreshToken.builder()
+                .id(1L)
+                .token(refreshTokenString)
+                .user(testUser)
+                .expiryDate(LocalDateTime.now().plusDays(30))
+                .revoked(false)
+                .createdAt(LocalDateTime.now())
+                .build();
+        
+        when(refreshTokenRepository.findByToken(refreshTokenString))
+                .thenReturn(Optional.of(refreshToken));
+        when(refreshTokenRepository.save(any())).thenReturn(refreshToken);
+        
+        assertThatCode(() -> authService.logout(refreshTokenString))
+                .doesNotThrowAnyException();
+        
+        verify(refreshTokenRepository).findByToken(refreshTokenString);
+        verify(refreshTokenRepository).save(any(com.connecta.gestor.model.RefreshToken.class));
+        assertThat(refreshToken.getRevoked()).isTrue();
+        assertThat(refreshToken.getRevokedAt()).isNotNull();
+    }
+    
+    @Test
+    @DisplayName("Deve lançar exceção ao fazer logout com refresh token nulo")
+    void shouldThrowExceptionWhenLogoutWithNullToken() {
+        assertThatThrownBy(() -> authService.logout(null))
+                .isInstanceOf(InvalidTokenException.class)
+                .hasMessage("Refresh token não fornecido");
+        
+        verify(refreshTokenRepository, never()).findByToken(anyString());
+    }
+    
+    @Test
+    @DisplayName("Deve lançar exceção ao fazer logout com refresh token vazio")
+    void shouldThrowExceptionWhenLogoutWithEmptyToken() {
+        assertThatThrownBy(() -> authService.logout(""))
+                .isInstanceOf(InvalidTokenException.class)
+                .hasMessage("Refresh token não fornecido");
+        
+        verify(refreshTokenRepository, never()).findByToken(anyString());
+    }
+    
+    @Test
+    @DisplayName("Deve lançar exceção ao fazer logout com refresh token inexistente")
+    void shouldThrowExceptionWhenLogoutWithNonExistentToken() {
+        String invalidToken = "non-existent-token";
+        
+        when(refreshTokenRepository.findByToken(invalidToken))
+                .thenReturn(Optional.empty());
+        
+        assertThatThrownBy(() -> authService.logout(invalidToken))
+                .isInstanceOf(InvalidTokenException.class)
+                .hasMessage("Refresh token inválido ou não encontrado");
+        
+        verify(refreshTokenRepository).findByToken(invalidToken);
+    }
+    
+    @Test
+    @DisplayName("Deve lançar exceção ao fazer logout com refresh token já revogado")
+    void shouldThrowExceptionWhenLogoutWithRevokedToken() {
+        String revokedTokenString = "revoked-token";
+        com.connecta.gestor.model.RefreshToken revokedToken = com.connecta.gestor.model.RefreshToken.builder()
+                .id(1L)
+                .token(revokedTokenString)
+                .user(testUser)
+                .expiryDate(LocalDateTime.now().plusDays(30))
+                .revoked(true)
+                .revokedAt(LocalDateTime.now().minusHours(1))
+                .createdAt(LocalDateTime.now().minusDays(1))
+                .build();
+        
+        when(refreshTokenRepository.findByToken(revokedTokenString))
+                .thenReturn(Optional.of(revokedToken));
+        
+        assertThatThrownBy(() -> authService.logout(revokedTokenString))
+                .isInstanceOf(InvalidTokenException.class)
+                .hasMessage("Refresh token já foi revogado");
+        
+        verify(refreshTokenRepository).findByToken(revokedTokenString);
+        verify(refreshTokenRepository, never()).save(any());
+    }
+    
+    @Test
+    @DisplayName("Deve lançar exceção ao fazer logout com refresh token expirado")
+    void shouldThrowExceptionWhenLogoutWithExpiredToken() {
+        String expiredTokenString = "expired-token";
+        com.connecta.gestor.model.RefreshToken expiredToken = com.connecta.gestor.model.RefreshToken.builder()
+                .id(1L)
+                .token(expiredTokenString)
+                .user(testUser)
+                .expiryDate(LocalDateTime.now().minusDays(1))
+                .revoked(false)
+                .createdAt(LocalDateTime.now().minusDays(31))
+                .build();
+        
+        when(refreshTokenRepository.findByToken(expiredTokenString))
+                .thenReturn(Optional.of(expiredToken));
+        
+        assertThatThrownBy(() -> authService.logout(expiredTokenString))
+                .isInstanceOf(InvalidTokenException.class)
+                .hasMessage("Refresh token expirado");
+        
+        verify(refreshTokenRepository).findByToken(expiredTokenString);
+        verify(refreshTokenRepository, never()).save(any());
     }
 }
 

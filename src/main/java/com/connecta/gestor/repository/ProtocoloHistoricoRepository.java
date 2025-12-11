@@ -13,3 +13,4 @@ public interface ProtocoloHistoricoRepository extends JpaRepository<ProtocoloHis
 }
 
 
+

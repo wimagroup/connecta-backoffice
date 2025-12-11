@@ -14,6 +14,7 @@ import com.connecta.gestor.security.JwtUtil;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.security.authentication.AuthenticationManager;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
@@ -51,6 +52,15 @@ public class AuthService {
     @Autowired
     private EmailService emailService;
     
+    @Autowired
+    private PasswordRecoveryTokenService tokenService;
+    
+    @Autowired
+    private com.connecta.gestor.validator.PasswordValidator passwordValidator;
+    
+    @Value("${app.password-recovery.token-expiration-hours:1}")
+    private int tokenExpirationHours;
+    
     @Transactional
     public LoginResponseDTO login(LoginRequestDTO request) {
         try {
@@ -85,13 +95,14 @@ public class AuthService {
             logger.info("Login realizado com sucesso para: {}", request.getEmail());
             
             return LoginResponseDTO.builder()
+                    .id(user.getId())
+                    .email(user.getEmail())
+                    .nome(user.getNome())
+                    .role(user.getRole().getNome().name())
                     .accessToken(accessToken)
                     .refreshToken(refreshTokenString)
                     .tipo("Bearer")
                     .expiresIn(jwtUtil.getAccessTokenExpiration() / 1000)
-                    .email(user.getEmail())
-                    .nome(user.getNome())
-                    .role(user.getRole().getNome().name())
                     .build();
             
         } catch (BadCredentialsException e) {
@@ -132,13 +143,14 @@ public class AuthService {
         logger.info("Refresh token realizado com sucesso para: {}", user.getEmail());
         
         return LoginResponseDTO.builder()
+                .id(user.getId())
+                .email(user.getEmail())
+                .nome(user.getNome())
+                .role(user.getRole().getNome().name())
                 .accessToken(newAccessToken)
                 .refreshToken(newRefreshTokenString)
                 .tipo("Bearer")
                 .expiresIn(jwtUtil.getAccessTokenExpiration() / 1000)
-                .email(user.getEmail())
-                .nome(user.getNome())
-                .role(user.getRole().getNome().name())
                 .build();
     }
     
@@ -146,45 +158,109 @@ public class AuthService {
     public void logout(String refreshTokenString) {
         logger.info("Tentativa de logout");
         
+        if (refreshTokenString == null || refreshTokenString.trim().isEmpty()) {
+            logger.warn("Tentativa de logout com refresh token nulo ou vazio");
+            throw new InvalidTokenException("Refresh token não fornecido");
+        }
+        
         RefreshToken refreshToken = refreshTokenRepository.findByToken(refreshTokenString)
-                .orElseThrow(() -> new InvalidTokenException("Refresh token inválido"));
+                .orElseThrow(() -> {
+                    logger.warn("Tentativa de logout com refresh token inexistente: {}", 
+                            refreshTokenString.substring(0, Math.min(10, refreshTokenString.length())) + "...");
+                    return new InvalidTokenException("Refresh token inválido ou não encontrado");
+                });
+        
+        if (refreshToken.getRevoked()) {
+            logger.warn("Tentativa de logout com token já revogado. Usuário ID: {}, Token revogado em: {}", 
+                    refreshToken.getUser().getId(), refreshToken.getRevokedAt());
+            throw new InvalidTokenException("Refresh token já foi revogado");
+        }
+        
+        if (refreshToken.isExpired()) {
+            logger.warn("Tentativa de logout com token expirado. Usuário ID: {}, Expirado em: {}", 
+                    refreshToken.getUser().getId(), refreshToken.getExpiryDate());
+            throw new InvalidTokenException("Refresh token expirado");
+        }
+        
+        User user = refreshToken.getUser();
         
         refreshToken.setRevoked(true);
+        refreshToken.setRevokedAt(LocalDateTime.now());
         refreshTokenRepository.save(refreshToken);
         
-        logger.info("Logout realizado com sucesso para usuário ID: {}", refreshToken.getUser().getId());
+        logger.info("Logout realizado com sucesso. Usuário: {} (ID: {}), Email: {}, Token revogado em: {}", 
+                user.getNome(), user.getId(), user.getEmail(), refreshToken.getRevokedAt());
     }
     
     @Transactional
     public void recoveryPassword(RecoveryPasswordRequestDTO request) {
-        logger.info("Solicitação de recuperação de senha para: {}", request.getEmail());
+        logger.info("Solicitação de recuperação de senha recebida");
         
-        User user = userRepository.findByEmail(request.getEmail())
-                .orElseThrow(() -> new ResourceNotFoundException(
-                        "Usuário não encontrado com o email informado"));
-        
-        String token = UUID.randomUUID().toString();
-        
-        user.setTokenRecuperacao(token);
-        user.setTokenRecuperacaoExpiracao(LocalDateTime.now().plusHours(1));
-        
-        userRepository.save(user);
-        
-        emailService.sendRecoveryPasswordEmail(user.getEmail(), token);
-        
-        logger.info("Email de recuperação enviado para: {}", request.getEmail());
+        try {
+            User user = userRepository.findByEmail(request.getEmail())
+                    .orElse(null);
+            
+            if (user != null && user.getAtivo()) {
+                String token = tokenService.generateSecureToken();
+                
+                user.setTokenRecuperacao(token);
+                user.setTokenRecuperacaoExpiracao(
+                    LocalDateTime.now().plusHours(tokenExpirationHours)
+                );
+                
+                userRepository.save(user);
+                
+                emailService.sendRecoveryPasswordEmail(user.getEmail(), user.getNome(), token);
+                
+                logger.info("Token de recuperação gerado e email enviado");
+            } else {
+                logger.warn("Tentativa de recuperação para email inexistente ou usuário inativo");
+                Thread.sleep(2000);
+            }
+            
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            logger.error("Erro ao processar recuperação de senha", e);
+        } catch (Exception e) {
+            logger.error("Erro ao processar recuperação de senha", e);
+        }
     }
     
     @Transactional
     public void resetPassword(ResetPasswordRequestDTO request) {
         logger.info("Tentativa de reset de senha com token");
         
+        if (!tokenService.validateTokenFormat(request.getToken())) {
+            logger.warn("Formato de token inválido recebido");
+            throw new InvalidTokenException("Token inválido ou malformado");
+        }
+        
         User user = userRepository.findByTokenRecuperacao(request.getToken())
-                .orElseThrow(() -> new InvalidTokenException("Token inválido"));
+                .orElseThrow(() -> {
+                    logger.warn("Token não encontrado no banco de dados");
+                    return new InvalidTokenException("Token inválido ou já utilizado");
+                });
         
         if (user.getTokenRecuperacaoExpiracao() == null ||
             LocalDateTime.now().isAfter(user.getTokenRecuperacaoExpiracao())) {
-            throw new InvalidTokenException("Token expirado");
+            logger.warn("Token expirado para usuário: {}", user.getEmail());
+            user.setTokenRecuperacao(null);
+            user.setTokenRecuperacaoExpiracao(null);
+            userRepository.save(user);
+            throw new InvalidTokenException("Token expirado. Solicite uma nova recuperação de senha");
+        }
+        
+        if (!user.getAtivo()) {
+            logger.warn("Tentativa de reset de senha para usuário inativo: {}", user.getEmail());
+            throw new BadCredentialsException("Usuário inativo");
+        }
+        
+        com.connecta.gestor.validator.PasswordValidator.ValidationResult validation = 
+            passwordValidator.validate(request.getNovaSenha());
+        
+        if (!validation.isValid()) {
+            logger.warn("Senha fraca fornecida durante reset");
+            throw new IllegalArgumentException(validation.getErrorMessage());
         }
         
         user.setSenha(passwordEncoder.encode(request.getNovaSenha()));
@@ -193,9 +269,15 @@ public class AuthService {
         
         userRepository.save(user);
         
+        refreshTokenRepository.findByUser(user)
+            .forEach(token -> {
+                token.setRevoked(true);
+                refreshTokenRepository.save(token);
+            });
+        
         emailService.sendPasswordChangedEmail(user.getEmail(), user.getNome());
         
-        logger.info("Senha redefinida com sucesso para o usuário: {}", user.getEmail());
+        logger.info("Senha redefinida com sucesso. Todas as sessões anteriores foram invalidadas");
     }
     
     @Transactional

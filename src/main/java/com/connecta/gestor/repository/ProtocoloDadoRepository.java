@@ -14,3 +14,4 @@ public interface ProtocoloDadoRepository extends JpaRepository<ProtocoloDado, Lo
 }
 
 
+

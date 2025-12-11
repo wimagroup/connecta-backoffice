@@ -11,12 +11,13 @@ import lombok.NoArgsConstructor;
 @Builder
 public class LoginResponseDTO {
     
+    private Long id;
+    private String email;
+    private String nome;
+    private String role;
     private String accessToken;
     private String refreshToken;
     private String tipo = "Bearer";
     private Long expiresIn;
-    private String email;
-    private String nome;
-    private String role;
 }
 

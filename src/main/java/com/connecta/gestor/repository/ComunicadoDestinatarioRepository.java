@@ -16,3 +16,4 @@ public interface ComunicadoDestinatarioRepository extends JpaRepository<Comunica
 }
 
 
+

@@ -580,3 +580,4 @@ export class ServicoService {
 
 O módulo de serviços está completamente funcional e preparado para o frontend Angular. Todos os endpoints estão protegidos adequadamente e retornam os dados no formato esperado.
 
+
